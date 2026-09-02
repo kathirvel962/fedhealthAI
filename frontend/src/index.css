@@ -1,0 +1,383 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu',
+    'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: linear-gradient(135deg, #FFFEF5 0%, #FFFBF0 20%, #FFFEF5 40%, #FFFBF0 60%, #FFFEF5 80%, #FFFBF0 100%);
+  min-height: 100vh;
+  position: relative;
+  background-attachment: fixed;
+}
+
+/* ENHANCED: Multiple layered luminous glow effects */
+body::before {
+  content: '';
+  position: fixed;
+  top: -30%;
+  left: 15%;
+  width: 50%;
+  height: 120%;
+  background: radial-gradient(ellipse at center, rgba(255, 215, 0, 0.2) 0%, rgba(255, 165, 0, 0.1) 30%, transparent 70%);
+  pointer-events: none;
+  z-index: -1;
+  filter: blur(40px);
+}
+
+/* Secondary glow layer */
+body::after {
+  content: '';
+  position: fixed;
+  bottom: -20%;
+  right: 10%;
+  width: 45%;
+  height: 100%;
+  background: radial-gradient(ellipse at center, rgba(255, 237, 78, 0.15) 0%, rgba(255, 215, 0, 0.05) 40%, transparent 70%);
+  pointer-events: none;
+  z-index: -1;
+  filter: blur(50px);
+}
+
+/* =============== PREMIUM ANIMATIONS =============== */
+
+/* Smooth fade-in on load */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(15px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Bright golden glow pulse */
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 10px 2px rgba(255, 215, 0, 0.4), 0 0 20px rgba(255, 165, 0, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 20px 4px rgba(255, 215, 0, 0.6), 0 0 30px rgba(255, 165, 0, 0.3);
+  }
+}
+
+/* Subtle animated gradient shift */
+@keyframes gradientShift {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+/* Card hover lift with glow */
+@keyframes cardLift {
+  from {
+    transform: translateY(0) scale(1);
+  }
+  to {
+    transform: translateY(-6px) scale(1.01);
+  }
+}
+
+/* Subtle scale animation on hover */
+@keyframes scaleUp {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.05);
+  }
+}
+
+/* Shine animation for buttons */
+@keyframes shine {
+  0% {
+    background-position: -1000px;
+  }
+  100% {
+    background-position: 1000px;
+  }
+}
+
+/* Floating effect */
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+/* Glow pulse for alerts */
+@keyframes glowPulse {
+  0%, 100% {
+    filter: drop-shadow(0 0 8px rgba(255, 68, 68, 0.4));
+  }
+  50% {
+    filter: drop-shadow(0 0 16px rgba(255, 68, 68, 0.6));
+  }
+}
+
+/* Premium utility classes */
+.glow-golden {
+  box-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
+}
+
+.glow-golden-hover:hover {
+  box-shadow: 0 0 30px rgba(255, 215, 0, 0.4), 0 0 50px rgba(255, 165, 0, 0.2);
+}
+
+.floating {
+  animation: float 3s ease-in-out infinite;
+}
+
+.shine-effect {
+  background-size: 1000px 100%;
+  animation: shine 3s infinite;
+}
+
+.premium-gradient {
+  background-size: 200% 200%;
+  animation: gradientShift 8s ease infinite;
+}
+
+/* Shimmer loading effect */
+@keyframes shimmer {
+  0% {
+    background-position: -1200px 0;
+  }
+  100% {
+    background-position: 1200px 0;
+  }
+}
+
+/* Gradient animation */
+@keyframes gradientShift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Gentle bounce */
+@keyframes bounce-slow {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+/* Utility classes for animations */
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-out;
+}
+
+.animate-pulse-glow {
+  animation: pulseGlow 2s infinite;
+}
+
+.hover\:animate-scale-up:hover {
+  animation: scaleUp 0.3s ease-out;
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite;
+  background: linear-gradient(
+    90deg,
+    #f0f4f8 25%,
+    #e2e8f0 50%,
+    #f0f4f8 75%
+  );
+  background-size: 1200px 100%;
+}
+
+.animate-gradient-shift {
+  animation: gradientShift 8s ease infinite;
+  background-size: 200% 200%;
+}
+
+.animate-bounce-slow {
+  animation: bounce-slow 2s infinite;
+}
+
+/* =============== GLASSMORPHISM & PREMIUM CARDS =============== */
+
+.glass-card {
+  backdrop-filter: blur(20px);
+  background: rgba(255, 255, 255, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+}
+
+.glass-card:hover {
+  backdrop-filter: blur(25px);
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
+}
+
+.glass-card-dark {
+  backdrop-filter: blur(20px);
+  background: rgba(15, 23, 42, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: white;
+}
+
+.premium-card {
+  border-radius: 1.5rem;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+}
+
+.premium-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.12);
+}
+
+/* =============== GRADIENT TEXT =============== */
+
+.gradient-text-primary {
+  background: linear-gradient(135deg, #0369A1 0%, #14B8A6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.gradient-text-alert {
+  background: linear-gradient(135deg, #FF6B6B 0%, #FF8C42 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.gradient-text-success {
+  background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.gradient-text-federation {
+  background: linear-gradient(135deg, #0369A1 0%, #06B6D4 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* =============== BACKGROUND ELEMENTS =============== */
+
+.radial-gradient-blur {
+  position: relative;
+}
+
+.radial-gradient-blur::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  right: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(3, 105, 161, 0.08) 0%, transparent 70%);
+  pointer-events: none;
+  border-radius: 50%;
+}
+
+.gradient-blob {
+  position: fixed;
+  pointer-events: none;
+  opacity: 0.05;
+  z-index: -1;
+}
+
+/* =============== SKELETON LOADERS =============== */
+
+.skeleton-loader {
+  background: linear-gradient(
+    90deg,
+    #f0f4f8 25%,
+    #e2e8f0 50%,
+    #f0f4f8 75%
+  );
+  background-size: 1200px 100%;
+  animation: shimmer 2s infinite;
+}
+
+/* =============== BUTTONS & INTERACTIONS =============== */
+
+.btn-premium {
+  position: relative;
+  overflow: hidden;
+  border-radius: 0.875rem;
+  font-weight: 600;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  padding: 0.75rem 1.5rem;
+}
+
+.btn-premium:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+}
+
+.btn-premium:active {
+  transform: translateY(0);
+}
+
+/* =============== RESPONSIVE GRID =============== */
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+@media (min-width: 1024px) {
+  .dashboard-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+/* =============== SCROLL BEHAVIOR =============== */
+
+html {
+  scroll-behavior: smooth;
+  overflow-x: hidden;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f0f4f8;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, #0369A1 0%, #14B8A6 100%);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, #025a82 0%, #0d9488 100%);
+}
