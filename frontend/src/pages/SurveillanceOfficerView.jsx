@@ -66,33 +66,35 @@ export default function SurveillanceOfficerView() {
         notification_type: type
       });
 
-      if (requestRes.data.status === 'already_sent') {
-        // Update local state and finish
+      if (requestRes.data.status === 'already_sent' || requestRes.data.status === 'sent') {
+        // Notification delivered directly by backend or already delivered
         setNotifyLoading(prev => ({ ...prev, [key]: false }));
-        loadAllData();
+        await loadAllData();
         return;
       }
 
       const { log_id, email_params } = requestRes.data;
 
-      // 2. Dispatch EmailJS send
-      try {
-        await sendPHCAlert(email_params);
+      // 2. Fallback to EmailJS send if configured
+      if (email_params) {
+        try {
+          await sendPHCAlert(email_params);
 
-        // 3. Confirm success on backend
-        await surveillanceAPI.confirmNotification({
-          log_id,
-          status: 'SENT'
-        });
+          // 3. Confirm success on backend
+          await surveillanceAPI.confirmNotification({
+            log_id,
+            status: 'SENT'
+          });
 
-      } catch (emailError) {
-        // 4. Confirm failure on backend
-        await surveillanceAPI.confirmNotification({
-          log_id,
-          status: 'FAILED',
-          error_message: emailError?.message || 'EmailJS failed to deliver'
-        });
-        throw emailError;
+        } catch (emailError) {
+          // 4. Confirm failure on backend
+          await surveillanceAPI.confirmNotification({
+            log_id,
+            status: 'FAILED',
+            error_message: emailError?.message || 'Notification failed to deliver'
+          });
+          throw emailError;
+        }
       }
 
       // Reload everything to update notification statuses in UI

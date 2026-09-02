@@ -95,7 +95,7 @@ class Command(BaseCommand):
                 'district_id': 'Coimbatore',
                 'latitude': 10.9915,
                 'longitude': 76.7712,
-                'email': 'phc.1fed@gmail.com'
+                'email': 'iamkathirvelsk@gmail.com'
             },
             {
                 'name': 'PHC_2',

@@ -1203,27 +1203,57 @@ class PHCNotificationView(APIView):
                     notification_type=notification_type
                 )
 
-            # Compute template parameters on the backend for EmailJS security
+            # Compute parameters
             primary_disease = get_dominant_disease(alert.phc_id)
+            alert_msg = alert.message or f"Elevated disease risk detected at {source_name}"
+            alert_time_str = alert.created_at.strftime('%Y-%m-%d %H:%M:%S UTC')
             
-            email_params = {
-                'to_email': recipient.email,
-                'phc_id': recipient.name,
-                'phc_name': recipient.phc_name or recipient.name,
-                'source_phc_id': alert.phc_id,
-                'source_phc_name': source_name,
-                'severity': alert.severity,
-                'risk_score': f"{alert.risk_score:.1f}",
-                'disease': primary_disease,
-                'alert_message': alert.message or f"Elevated disease risk detected at {source_name}",
-                'alert_time': alert.created_at.strftime('%Y-%m-%d %H:%M:%S UTC')
-            }
+            # Send email directly from backend using Django mail configuration
+            from api.email_service import send_phc_alert_email
+            email_sent, email_err = send_phc_alert_email(
+                recipient_email=recipient.email,
+                recipient_phc_name=recipient.phc_name or recipient.name,
+                source_phc_name=source_name,
+                disease=primary_disease,
+                severity=alert.severity,
+                risk_score=f"{alert.risk_score:.1f}",
+                alert_message=alert_msg,
+                alert_time=alert_time_str
+            )
 
-            return Response({
-                'status': 'pending',
-                'log_id': str(log.id),
-                'email_params': email_params
-            }, status=status.HTTP_200_OK)
+            if email_sent:
+                log.status = 'SENT'
+                log.sent_at = datetime.utcnow()
+                log.error_message = None
+                log.save()
+                return Response({
+                    'status': 'sent',
+                    'log_id': str(log.id),
+                    'message': f"Surveillance alert email successfully delivered to {recipient.email}"
+                }, status=status.HTTP_200_OK)
+            else:
+                log.status = 'FAILED'
+                log.error_message = email_err
+                log.save()
+                
+                email_params = {
+                    'to_email': recipient.email,
+                    'phc_id': recipient.name,
+                    'phc_name': recipient.phc_name or recipient.name,
+                    'source_phc_id': alert.phc_id,
+                    'source_phc_name': source_name,
+                    'severity': alert.severity,
+                    'risk_score': f"{alert.risk_score:.1f}",
+                    'disease': primary_disease,
+                    'alert_message': alert_msg,
+                    'alert_time': alert_time_str
+                }
+                return Response({
+                    'status': 'pending',
+                    'log_id': str(log.id),
+                    'error': email_err,
+                    'email_params': email_params
+                }, status=status.HTTP_200_OK)
 
         except Exception as e:
             logger.error(f"Error initiating PHC notification: {str(e)}", exc_info=True)
