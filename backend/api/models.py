@@ -576,7 +576,7 @@ class NotificationLog(Document):
     recipient_email = StringField(required=True)
     sent_at = DateTimeField(default=datetime.utcnow)
     status = StringField(required=True, choices=['SENT', 'FAILED', 'PENDING'], default='PENDING')
-    notification_type = StringField(default='automatic')  # 'automatic' or 'manual'
+    notification_type = StringField(default='manual')  # 'manual'
     error_message = StringField(default=None)
 
     meta = {

@@ -40,6 +40,7 @@ export const surveillanceAPI = {
   triggerDetection: () => api.post('/surveillance/detect/'),
   requestNotification: (data) => api.post('/surveillance/notify/', data),
   confirmNotification: (data) => api.post('/surveillance/notify/confirm/', data),
+  directSendAlert: (data) => api.post('/surveillance/direct-send/', data),
 };
 
 // STEP 7: Dashboard Metrics APIs

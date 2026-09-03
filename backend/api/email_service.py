@@ -42,7 +42,7 @@ RECOMMENDED CLINICAL ACTION:
 • Coordinate with the District Health Officer if incidence continues to rise.
 
 ======================================================================
-This is an automated notification from FedHealth AI Privacy-Preserving Health Intelligence Network.
+This is an official public health surveillance alert from FedHealth AI Privacy-Preserving Health Intelligence Network.
 ======================================================================
 """
 
@@ -100,7 +100,7 @@ This is an automated notification from FedHealth AI Privacy-Preserving Health In
       </div>
     </div>
     <div class="footer">
-      FedHealth AI &bull; Automated Privacy-Preserving Health Intelligence Network
+      FedHealth AI &bull; Privacy-Preserving Health Intelligence Network
     </div>
   </div>
 </body>

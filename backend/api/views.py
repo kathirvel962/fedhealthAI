@@ -1152,7 +1152,7 @@ class PHCNotificationView(APIView):
         try:
             alert_id = request.data.get('alert_id')
             recipient_phc_id = request.data.get('recipient_phc_id')
-            notification_type = request.data.get('notification_type', 'automatic')
+            notification_type = request.data.get('notification_type', 'manual')
 
             if not alert_id or not recipient_phc_id:
                 return Response({'error': 'alert_id and recipient_phc_id are required'}, status=status.HTTP_400_BAD_REQUEST)
@@ -1295,6 +1295,91 @@ class PHCNotificationConfirmView(APIView):
 
         except Exception as e:
             logger.error(f"Error confirming PHC notification: {str(e)}", exc_info=True)
+            return Response({'error': 'Internal server error'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class DirectPHCAlertView(APIView):
+    """Directly dispatch an alert notification email to a target PHC (e.g. PHC_3)"""
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        try:
+            target_phc_id = request.data.get('target_phc_id', 'PHC_3').strip().upper()
+            source_phc_id = request.data.get('source_phc_id', 'PHC_1').strip().upper()
+            disease = request.data.get('disease', 'Dengue')
+            severity = request.data.get('severity', 'HIGH')
+            risk_score = request.data.get('risk_score', '85.0')
+            custom_message = request.data.get('message')
+
+            target_phc = PHC.objects.filter(name=target_phc_id).first()
+            if not target_phc:
+                return Response({'error': f"Target PHC '{target_phc_id}' not found."}, status=status.HTTP_404_NOT_FOUND)
+
+            if not target_phc.email:
+                return Response({'error': f"Target PHC '{target_phc_id}' has no email configured."}, status=status.HTTP_400_BAD_REQUEST)
+
+            source_phc = PHC.objects.filter(name=source_phc_id).first()
+            source_name = source_phc.phc_name if source_phc else f"Primary Health Center ({source_phc_id})"
+            target_name = target_phc.phc_name or target_phc_id
+
+            alert_msg = custom_message or (
+                f"Surveillance alert: Elevated risk and cases of {disease} observed in neighboring PHC zones. "
+                f"Please review admission logs, triage vitals, and ensure adequate diagnostic supplies."
+            )
+            alert_time_str = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
+
+            from api.email_service import send_phc_alert_email
+            email_sent, email_err = send_phc_alert_email(
+                recipient_email=target_phc.email,
+                recipient_phc_name=target_name,
+                source_phc_name=source_name,
+                disease=disease,
+                severity=severity,
+                risk_score=str(risk_score),
+                alert_message=alert_msg,
+                alert_time=alert_time_str
+            )
+
+            log = NotificationLog.objects.create(
+                alert_id=f"DIRECT_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
+                recipient_phc_id=target_phc_id,
+                recipient_email=target_phc.email,
+                status='SENT' if email_sent else 'FAILED',
+                notification_type='manual',
+                error_message=email_err,
+                sent_at=datetime.utcnow()
+            )
+
+            if email_sent:
+                return Response({
+                    'status': 'sent',
+                    'log_id': str(log.id),
+                    'recipient_email': target_phc.email,
+                    'message': f"Alert email successfully dispatched to {target_name} ({target_phc.email})"
+                }, status=status.HTTP_200_OK)
+            else:
+                email_params = {
+                    'to_email': target_phc.email,
+                    'phc_id': target_phc_id,
+                    'phc_name': target_name,
+                    'source_phc_id': source_phc_id,
+                    'source_phc_name': source_name,
+                    'severity': severity,
+                    'risk_score': str(risk_score),
+                    'disease': disease,
+                    'alert_message': alert_msg,
+                    'alert_time': alert_time_str
+                }
+                return Response({
+                    'status': 'pending',
+                    'log_id': str(log.id),
+                    'error': email_err,
+                    'email_params': email_params
+                }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            logger.error(f"Error dispatching direct PHC alert: {str(e)}", exc_info=True)
             return Response({'error': 'Internal server error'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 

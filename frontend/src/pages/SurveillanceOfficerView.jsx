@@ -41,8 +41,18 @@ export default function SurveillanceOfficerView() {
   const [notifyLoading, setNotifyLoading] = useState({});
   const [selectedPhcOnMap, setSelectedPhcOnMap] = useState(null);
 
-  // Ref to prevent duplicate auto-triggering on the client during a session
-  const autoTriggeredRef = useRef(new Set());
+  // Direct Alert Dispatch Modal State (defaults to PHC_5)
+  const [showDirectModal, setShowDirectModal] = useState(false);
+  const [directForm, setDirectForm] = useState({
+    target_phc_id: 'PHC_5',
+    source_phc_id: 'PHC_4',
+    disease: 'Dengue',
+    severity: 'HIGH',
+    risk_score: '85.0',
+    message: ''
+  });
+  const [directSending, setDirectSending] = useState(false);
+  const [directFeedback, setDirectFeedback] = useState(null);
 
   // Auto-refresh interval (15 seconds)
   useEffect(() => {
@@ -53,17 +63,72 @@ export default function SurveillanceOfficerView() {
     return () => clearInterval(interval);
   }, []);
 
-  // Notification Handler using confirm endpoint for robustness
-  const handleNotifyPhc = async (alertId, recipientPhcId, type = 'manual') => {
+  // Direct Alert Dispatch to a specific PHC (e.g. PHC_3)
+  const handleDirectDispatch = async (e) => {
+    if (e) e.preventDefault();
+    setDirectSending(true);
+    setDirectFeedback(null);
+
+    try {
+      const res = await surveillanceAPI.directSendAlert({
+        target_phc_id: directForm.target_phc_id,
+        source_phc_id: directForm.source_phc_id,
+        disease: directForm.disease,
+        severity: directForm.severity,
+        risk_score: directForm.risk_score,
+        message: directForm.message.trim() || undefined
+      });
+
+      if (res.data.status === 'sent') {
+        setDirectFeedback({
+          type: 'success',
+          text: res.data.message || `Surveillance email delivered successfully to ${directForm.target_phc_id}!`
+        });
+        await loadAllData();
+      } else if (res.data.status === 'pending' && res.data.email_params) {
+        // Fallback to EmailJS if backend SMTP not directly connected
+        try {
+          await sendPHCAlert(res.data.email_params);
+          await surveillanceAPI.confirmNotification({
+            log_id: res.data.log_id,
+            status: 'SENT'
+          });
+          setDirectFeedback({
+            type: 'success',
+            text: `Email alert sent successfully to ${res.data.email_params.to_email} for ${directForm.target_phc_id}!`
+          });
+          await loadAllData();
+        } catch (emailErr) {
+          await surveillanceAPI.confirmNotification({
+            log_id: res.data.log_id,
+            status: 'FAILED',
+            error_message: emailErr.message
+          });
+          throw emailErr;
+        }
+      }
+    } catch (err) {
+      console.error('Direct dispatch error:', err);
+      setDirectFeedback({
+        type: 'error',
+        text: err?.response?.data?.error || err.message || 'Failed to dispatch alert email.'
+      });
+    } finally {
+      setDirectSending(false);
+    }
+  };
+
+  // Manual Notification Handler using confirm endpoint for robustness
+  const handleNotifyPhc = async (alertId, recipientPhcId) => {
     const key = `${alertId}_${recipientPhcId}`;
     setNotifyLoading(prev => ({ ...prev, [key]: true }));
 
     try {
-      // 1. Request parameters from the backend
+      // 1. Request parameters from the backend (manual notification)
       const requestRes = await surveillanceAPI.requestNotification({
         alert_id: alertId,
         recipient_phc_id: recipientPhcId,
-        notification_type: type
+        notification_type: 'manual'
       });
 
       if (requestRes.data.status === 'already_sent' || requestRes.data.status === 'sent') {
@@ -102,33 +167,11 @@ export default function SurveillanceOfficerView() {
 
     } catch (err) {
       console.error('Notification dispatch error:', err);
-      if (type === 'manual') {
-        alert(err.message || 'Failed to send notification email. Please check configuration and try again.');
-      }
+      alert(err.message || 'Failed to send notification email. Please check configuration and try again.');
     } finally {
       setNotifyLoading(prev => ({ ...prev, [key]: false }));
     }
   };
-
-  // Automated notification hook for critical alerts
-  useEffect(() => {
-    if (!surveillanceMetrics || !surveillanceMetrics.alert_history) return;
-
-    const criticalAlerts = surveillanceMetrics.alert_history.filter(a => a.severity === 'CRITICAL');
-
-    criticalAlerts.forEach(alert => {
-      if (alert.notifications) {
-        alert.notifications.forEach(notif => {
-          const key = `${alert.id}_${notif.recipient_phc_id}`;
-          // Trigger automatic EmailJS send only if not already sent or pending
-          if (notif.status === 'NONE' && !autoTriggeredRef.current.has(key)) {
-            autoTriggeredRef.current.add(key);
-            handleNotifyPhc(alert.id, notif.recipient_phc_id, 'automatic');
-          }
-        });
-      }
-    });
-  }, [surveillanceMetrics]);
 
 
   const loadAllData = async () => {
@@ -322,19 +365,34 @@ export default function SurveillanceOfficerView() {
                 Last updated: {lastUpdated.toLocaleTimeString()} | Auto-refreshing (15s)
               </p>
             </div>
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              disabled={loading}
-              onClick={handleRefresh}
-              className="btn-premium flex items-center gap-2 px-4 py-2 border rounded-lg text-sm text-black shadow-md font-semibold"
-              style={{
-                background: medicalTheme.colors.gradients.danger_gradient
-              }}
-            >
-              <FiRefreshCw className={loading ? 'animate-spin' : ''} />
-              {loading ? 'Refreshing...' : 'Refresh Data'}
-            </motion.button>
+            <div className="flex items-center gap-3">
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => {
+                  setDirectFeedback(null);
+                  setShowDirectModal(true);
+                }}
+                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm shadow-md font-semibold transition cursor-pointer"
+                title="Send manual surveillance alert email to a PHC"
+              >
+                <FiSend className="text-sm" />
+                Send Alert to PHC
+              </motion.button>
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                disabled={loading}
+                onClick={handleRefresh}
+                className="btn-premium flex items-center gap-2 px-4 py-2 border rounded-lg text-sm text-black shadow-md font-semibold"
+                style={{
+                  background: medicalTheme.colors.gradients.danger_gradient
+                }}
+              >
+                <FiRefreshCw className={loading ? 'animate-spin' : ''} />
+                {loading ? 'Refreshing...' : 'Refresh Data'}
+              </motion.button>
+            </div>
           </div>
           {refreshError && (
             <div className="mt-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm flex items-center gap-2">
@@ -507,9 +565,11 @@ export default function SurveillanceOfficerView() {
                                         <button
                                           disabled={isSending}
                                           onClick={() => handleNotifyPhc(alert.id, notif.recipient_phc_id)}
-                                          className="px-2 py-1 bg-indigo-650 hover:bg-indigo-700 text-white rounded text-[10px] font-bold transition disabled:bg-gray-300"
+                                          className="flex items-center gap-1 px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] font-bold transition shadow-xs disabled:bg-gray-300 cursor-pointer"
+                                          title={`Manually send email alert to ${notif.recipient_phc_name}`}
                                         >
-                                          Notify
+                                          <FiSend className="text-[10px]" />
+                                          Send Alert
                                         </button>
                                       )}
                                     </div>
@@ -901,6 +961,183 @@ export default function SurveillanceOfficerView() {
                 </span>
               )}
             </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Direct Alert Dispatch Modal (e.g. For PHC_3) */}
+      {showDirectModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl border border-gray-100"
+          >
+            <div className="bg-indigo-600 text-white p-5 flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <FiSend className="text-xl" />
+                <h3 className="font-bold text-lg">Dispatch Direct Alert Email</h3>
+              </div>
+              <button
+                onClick={() => setShowDirectModal(false)}
+                className="text-white/80 hover:text-white transition cursor-pointer"
+              >
+                <FiX className="text-xl" />
+              </button>
+            </div>
+
+            <form onSubmit={handleDirectDispatch} className="p-6 space-y-4">
+              {directFeedback && (
+                <div
+                  className={`p-3.5 rounded-xl text-xs flex items-start gap-2 border ${
+                    directFeedback.type === 'success'
+                      ? 'bg-green-50 text-green-800 border-green-200'
+                      : 'bg-red-50 text-red-800 border-red-200'
+                  }`}
+                >
+                  {directFeedback.type === 'success' ? (
+                    <FiCheckCircle className="text-base shrink-0 text-green-600 mt-0.5" />
+                  ) : (
+                    <FiAlertCircle className="text-base shrink-0 text-red-600 mt-0.5" />
+                  )}
+                  <span>{directFeedback.text}</span>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                    Target PHC (Recipient)
+                  </label>
+                  <select
+                    value={directForm.target_phc_id}
+                    onChange={(e) => setDirectForm({ ...directForm, target_phc_id: e.target.value })}
+                    className="w-full text-xs font-semibold p-2.5 bg-slate-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-hidden"
+                  >
+                    <option value="PHC_5">PHC_5 - Kuniamuthur (phc.5fed@gmail.com)</option>
+                    <option value="PHC_4">PHC_4 - Vellalore (phc.4fed@gmail.com)</option>
+                    <option value="PHC_3">PHC_3 - Z. Puravipalayam (phc.3fed@gmail.com)</option>
+                    <option value="PHC_2">PHC_2 - S.M.C. Palayam (phc.2fed@gmail.com)</option>
+                    <option value="PHC_1">PHC_1 - Narasipuram (phc.1fed@gmail.com)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                    Source PHC (Outbreak)
+                  </label>
+                  <select
+                    value={directForm.source_phc_id}
+                    onChange={(e) => setDirectForm({ ...directForm, source_phc_id: e.target.value })}
+                    className="w-full text-xs font-semibold p-2.5 bg-slate-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-hidden"
+                  >
+                    <option value="PHC_4">PHC_4 - Vellalore</option>
+                    <option value="PHC_3">PHC_3 - Z. Puravipalayam</option>
+                    <option value="PHC_2">PHC_2 - S.M.C. Palayam</option>
+                    <option value="PHC_1">PHC_1 - Narasipuram</option>
+                    <option value="PHC_5">PHC_5 - Kuniamuthur</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                    Disease
+                  </label>
+                  <select
+                    value={directForm.disease}
+                    onChange={(e) => setDirectForm({ ...directForm, disease: e.target.value })}
+                    className="w-full text-xs font-semibold p-2.5 bg-slate-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-hidden"
+                  >
+                    <option value="Dengue">Dengue</option>
+                    <option value="Viral Fever">Viral Fever</option>
+                    <option value="Typhoid">Typhoid</option>
+                    <option value="Cholera">Cholera</option>
+                    <option value="Influenza">Influenza</option>
+                    <option value="Tuberculosis">Tuberculosis</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                    Severity
+                  </label>
+                  <select
+                    value={directForm.severity}
+                    onChange={(e) => setDirectForm({ ...directForm, severity: e.target.value })}
+                    className="w-full text-xs font-semibold p-2.5 bg-slate-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-hidden"
+                  >
+                    <option value="HIGH">HIGH</option>
+                    <option value="CRITICAL">CRITICAL</option>
+                    <option value="MEDIUM">MEDIUM</option>
+                    <option value="LOW">LOW</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                    Risk Score
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    step="0.1"
+                    value={directForm.risk_score}
+                    onChange={(e) => setDirectForm({ ...directForm, risk_score: e.target.value })}
+                    className="w-full text-xs font-semibold p-2.5 bg-slate-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-hidden"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                  Surveillance Instructions / Notes
+                </label>
+                <textarea
+                  rows="3"
+                  placeholder="Optional custom clinical instructions for the target health center..."
+                  value={directForm.message}
+                  onChange={(e) => setDirectForm({ ...directForm, message: e.target.value })}
+                  className="w-full text-xs p-3 bg-slate-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-hidden"
+                />
+              </div>
+
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/60 text-[11px] text-slate-600">
+                <span className="font-bold text-slate-800 block mb-0.5">Recipients:</span>
+                This will deliver an official disease surveillance alert email directly to{' '}
+                <strong className="text-indigo-700 font-bold">
+                  {directForm.target_phc_id === 'PHC_5'
+                    ? 'phc.5fed@gmail.com (PHC_5 - Kuniamuthur)'
+                    : directForm.target_phc_id === 'PHC_3'
+                    ? 'phc.3fed@gmail.com (PHC_3 - Z. Puravipalayam)'
+                    : directForm.target_phc_id === 'PHC_4'
+                    ? 'phc.4fed@gmail.com (PHC_4 - Vellalore)'
+                    : directForm.target_phc_id === 'PHC_1'
+                    ? 'phc.1fed@gmail.com (PHC_1 - Narasipuram)'
+                    : 'phc.2fed@gmail.com (PHC_2 - S.M.C. Palayam)'}
+                </strong>.
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowDirectModal(false)}
+                  className="px-4 py-2 border border-gray-200 text-gray-700 rounded-xl text-xs font-semibold hover:bg-gray-50 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={directSending}
+                  className="flex items-center gap-2 px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition shadow-md disabled:bg-gray-300 cursor-pointer"
+                >
+                  <FiSend className="text-xs" />
+                  {directSending ? 'Sending Alert Email...' : `Send Email to ${directForm.target_phc_id}`}
+                </button>
+              </div>
+            </form>
           </motion.div>
         </div>
       )}
