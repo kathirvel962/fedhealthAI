@@ -338,6 +338,10 @@ class HealthAlert(Document):
     recommended_action = StringField(default=None)
     created_at = DateTimeField(default=datetime.utcnow)
     acknowledged_at = DateTimeField(default=None)
+    acknowledged_by = StringField(default=None) # username of Surveillance Officer who acknowledged/sent advisory
+    notified_phcs = ListField(StringField(), default=[]) # list of target PHC names notified
+    advisory_subject = StringField(default=None)
+    advisory_notes = StringField(default=None)
     resolved_at = DateTimeField(default=None)
     status = StringField(required=True, choices=['NEW', 'ACKNOWLEDGED', 'RESOLVED'], default='NEW')
     created_by = StringField(default='system') # 'system' or username of District Admin
@@ -353,6 +357,7 @@ class HealthAlert(Document):
             'severity',
             'status',
             'created_at',
+            'acknowledged_by',
             ('target_phc', 'status', '-created_at'),
             ('disease', 'source_phc', 'target_phc', 'status')
         ]
