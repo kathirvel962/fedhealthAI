@@ -220,8 +220,13 @@ def calculate_composite_risk_score(phc_id):
         abnormal_wbc_ratio = (abnormal_wbc / total_patients) * 100
         wbc_component = (abnormal_wbc_ratio / 100) * 0.3 * 100
         
+        # 4) High Clinical Severity Percentage (weight: 0.0, clinical baseline monitoring)
+        high_severity_count = sum(1 for p in patients if p.severity_level == 'High')
+        high_severity_percentage = (high_severity_count / total_patients) * 100
+        severity_component = (high_severity_percentage / 100) * 0.0 * 100
+        
         # Composite score (0-100 scale)
-        composite_score = fever_component + predictions_component + wbc_component
+        composite_score = fever_component + predictions_component + wbc_component + severity_component
         composite_score = max(0, min(100, composite_score))  # Clamp to 0-100
         
         # Determine severity
@@ -249,10 +254,12 @@ def calculate_composite_risk_score(phc_id):
             fever_percentage=fever_percentage,
             positive_predictions_percentage=positive_predictions_percentage,
             abnormal_wbc_ratio=abnormal_wbc_ratio,
+            high_severity_percentage=high_severity_percentage,
             composite_score_breakdown={
                 'fever_component': round(fever_component, 2),
                 'predictions_component': round(predictions_component, 2),
-                'wbc_component': round(wbc_component, 2)
+                'wbc_component': round(wbc_component, 2),
+                'severity_component': round(severity_component, 2)
             },
             message=f"Composite risk score for {phc_id}: {composite_score:.2f}/100 ({severity})",
             details={
@@ -260,10 +267,12 @@ def calculate_composite_risk_score(phc_id):
                 'fever_cases': fever_cases,
                 'positive_predictions': positive_predictions,
                 'abnormal_wbc_count': abnormal_wbc,
+                'high_severity_count': high_severity_count,
                 'calculation': {
                     'fever': f"{fever_percentage:.2f}% × 0.4 = {fever_component:.2f}",
                     'predictions': f"{positive_predictions_percentage:.2f}% × 0.3 = {predictions_component:.2f}",
-                    'wbc': f"{abnormal_wbc_ratio:.2f}% × 0.3 = {wbc_component:.2f}"
+                    'wbc': f"{abnormal_wbc_ratio:.2f}% × 0.3 = {wbc_component:.2f}",
+                    'severity': f"{high_severity_percentage:.2f}% × 0.0 = {severity_component:.2f}"
                 }
             }
         )
@@ -271,7 +280,7 @@ def calculate_composite_risk_score(phc_id):
         logger.info(
             f"Composite risk score for {phc_id}: {composite_score:.2f}/100 ({severity}) - "
             f"Fever: {fever_percentage:.2f}%, Predictions: {positive_predictions_percentage:.2f}%, "
-            f"Abnormal WBC: {abnormal_wbc_ratio:.2f}%"
+            f"Abnormal WBC: {abnormal_wbc_ratio:.2f}%, High Severity: {high_severity_percentage:.2f}%"
         )
         
         return {
@@ -281,10 +290,18 @@ def calculate_composite_risk_score(phc_id):
             'fever_percentage': round(fever_percentage, 2),
             'positive_predictions_percentage': round(positive_predictions_percentage, 2),
             'abnormal_wbc_ratio': round(abnormal_wbc_ratio, 2),
+            'high_severity_percentage': round(high_severity_percentage, 2),
             'components': {
                 'fever': round(fever_component, 2),
                 'predictions': round(predictions_component, 2),
-                'wbc': round(wbc_component, 2)
+                'wbc': round(wbc_component, 2),
+                'severity': round(severity_component, 2)
+            },
+            'weights': {
+                'fever': 0.4,
+                'positive_predictions': 0.3,
+                'abnormal_wbc': 0.3,
+                'severity': 0.0
             },
             'total_patients': total_patients,
             'alert_created': True

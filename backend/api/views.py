@@ -728,10 +728,47 @@ class PHCDashboardMetricsView(APIView):
             # Get patient count
             patient_count = Patient.objects.filter(phc_id=phc_id).count()
             
-            # Get latest risk score
-            latest_alert = Alert.objects.filter(phc_id=phc_id).order_by('-created_at').first()
+            # Get latest composite risk score and factors
+            latest_alert = Alert.objects.filter(phc_id=phc_id, alert_type='COMPOSITE_RISK').order_by('-created_at').first()
+            if not latest_alert:
+                latest_alert = Alert.objects.filter(phc_id=phc_id).order_by('-created_at').first()
+            
             risk_score = float(latest_alert.risk_score) if latest_alert else 0.0
-            alert_severity = latest_alert.severity if latest_alert else 'UNKNOWN'
+            alert_severity = latest_alert.severity if latest_alert else 'LOW'
+            
+            # Fetch PHC object for official name
+            phc_obj = PHC.objects.filter(name=phc_id).first()
+            phc_name = phc_obj.phc_name if phc_obj and phc_obj.phc_name else phc_id
+            
+            # Extract factor percentages with robust fallback to Patient aggregation
+            fever_pct = float(latest_alert.fever_percentage) if latest_alert and latest_alert.fever_percentage is not None else None
+            pos_pred_pct = float(latest_alert.positive_predictions_percentage) if latest_alert and latest_alert.positive_predictions_percentage is not None else None
+            abnormal_wbc_pct = float(latest_alert.abnormal_wbc_ratio) if latest_alert and latest_alert.abnormal_wbc_ratio is not None else None
+            high_sev_pct = float(latest_alert.high_severity_percentage) if latest_alert and hasattr(latest_alert, 'high_severity_percentage') and latest_alert.high_severity_percentage is not None else None
+            
+            if fever_pct is None or pos_pred_pct is None or abnormal_wbc_pct is None or high_sev_pct is None:
+                all_pts = list(Patient.objects.filter(phc_id=phc_id))
+                tot = len(all_pts)
+                if tot > 0:
+                    if fever_pct is None:
+                        fever_pct = (sum(1 for p in all_pts if p.fever == 1) / tot) * 100
+                    if pos_pred_pct is None:
+                        disease_keywords = ['fever', 'malaria', 'typhoid', 'dengue', 'influenza']
+                        pos_pred_pct = (sum(1 for p in all_pts if any(k in (p.disease_label or '').lower() for k in disease_keywords)) / tot) * 100
+                    if abnormal_wbc_pct is None:
+                        abnormal_wbc_pct = (sum(1 for p in all_pts if p.wbc_count < 4500 or p.wbc_count > 11000) / tot) * 100
+                    if high_sev_pct is None:
+                        high_sev_pct = (sum(1 for p in all_pts if p.severity_level == 'High') / tot) * 100
+                else:
+                    fever_pct = fever_pct or 0.0
+                    pos_pred_pct = pos_pred_pct or 0.0
+                    abnormal_wbc_pct = abnormal_wbc_pct or 0.0
+                    high_sev_pct = high_sev_pct or 0.0
+            
+            fever_component = round((fever_pct / 100) * 0.4 * 100, 2)
+            predictions_component = round((pos_pred_pct / 100) * 0.3 * 100, 2)
+            wbc_component = round((abnormal_wbc_pct / 100) * 0.3 * 100, 2)
+            severity_component = round((high_sev_pct / 100) * 0.0 * 100, 2)
             
             # Get alert history
             alerts_7_days = Alert.objects.filter(
@@ -786,7 +823,59 @@ class PHCDashboardMetricsView(APIView):
                 },
                 'risk': {
                     'latest_score': round(risk_score, 2),
-                    'severity': alert_severity
+                    'severity': alert_severity,
+                    'phc_name': phc_name,
+                    'last_updated': latest_alert.created_at.isoformat() if latest_alert else datetime.utcnow().isoformat(),
+                    'factors': {
+                        'fever': {
+                            'label': 'Fever Rate',
+                            'percentage': round(fever_pct, 2),
+                            'weight': 0.40,
+                            'weight_percentage': 40,
+                            'contribution': fever_component,
+                            'unit': '%'
+                        },
+                        'positive_diagnoses': {
+                            'label': 'Positive Diagnoses',
+                            'percentage': round(pos_pred_pct, 2),
+                            'weight': 0.30,
+                            'weight_percentage': 30,
+                            'contribution': predictions_component,
+                            'unit': '%'
+                        },
+                        'abnormal_wbc': {
+                            'label': 'Abnormal WBC',
+                            'percentage': round(abnormal_wbc_pct, 2),
+                            'weight': 0.30,
+                            'weight_percentage': 30,
+                            'contribution': wbc_component,
+                            'unit': '%'
+                        },
+                        'severity': {
+                            'label': 'High Clinical Severity',
+                            'percentage': round(high_sev_pct, 2),
+                            'weight': 0.00,
+                            'weight_percentage': 0,
+                            'contribution': severity_component,
+                            'unit': '%'
+                        }
+                    },
+                    'breakdown': {
+                        'fever_percentage': round(fever_pct, 2),
+                        'positive_predictions_percentage': round(pos_pred_pct, 2),
+                        'abnormal_wbc_ratio': round(abnormal_wbc_pct, 2),
+                        'high_severity_percentage': round(high_sev_pct, 2),
+                        'fever_component': fever_component,
+                        'predictions_component': predictions_component,
+                        'wbc_component': wbc_component,
+                        'severity_component': severity_component
+                    },
+                    'weights': {
+                        'fever': 0.40,
+                        'positive_diagnoses': 0.30,
+                        'abnormal_wbc': 0.30,
+                        'severity': 0.00
+                    }
                 },
                 'patients': {'total': patient_count},
                 'alerts_7_days': alert_history,

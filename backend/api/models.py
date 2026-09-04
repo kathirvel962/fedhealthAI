@@ -302,6 +302,7 @@ class Alert(Document):
     fever_percentage = FloatField(default=None)
     positive_predictions_percentage = FloatField(default=None)
     abnormal_wbc_ratio = FloatField(default=None)
+    high_severity_percentage = FloatField(default=None)
     composite_score_breakdown = DictField(default={})  # {fever: 0.15, predictions: 0.12, wbc: 0.08}
     
     # Metadata

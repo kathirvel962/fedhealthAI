@@ -5,6 +5,7 @@ import PatientForm from '../components/PatientForm';
 import DiseasePredictor from '../components/DiseasePredictor';
 import SymptomDistributionVisualization from '../components/SymptomDistributionVisualization';
 import WhatChangedInsightCard from '../components/WhatChangedInsightCard';
+import PHCRiskScoreCard from '../components/PHCRiskScoreCard';
 import { LoadingSkeleton, EmptyState } from '../components/LoadingStates';
 import { FiUsers, FiActivity, FiAlertTriangle, FiCheckCircle, FiRefreshCw, FiHeart, FiBell, FiPlus } from 'react-icons/fi';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList } from 'recharts';
@@ -143,16 +144,49 @@ export default function PHCDashboard() {
               </div>
 
               {/* Card 2: PHC Health Risk */}
-              <div className="bg-amber-50/20 border border-amber-100 rounded-2xl p-5 flex justify-between items-center shadow-sm">
+              <div 
+                onClick={() => {
+                  const el = document.getElementById('phc-risk-score-section');
+                  if (el) el.scrollIntoView({ behavior: 'smooth' });
+                }}
+                className={`border rounded-2xl p-5 flex justify-between items-center shadow-sm cursor-pointer transition hover:shadow-md ${
+                  (metrics.risk?.latest_score || 0) >= 75 ? 'bg-rose-50/20 border-rose-200 hover:bg-rose-50/30' :
+                  (metrics.risk?.latest_score || 0) >= 50 ? 'bg-orange-50/20 border-orange-200 hover:bg-orange-50/30' :
+                  (metrics.risk?.latest_score || 0) >= 25 ? 'bg-amber-50/20 border-amber-200 hover:bg-amber-50/30' :
+                  'bg-emerald-50/20 border-emerald-200 hover:bg-emerald-50/30'
+                }`}
+              >
                 <div>
                   <p className="text-xs font-bold text-gray-550 mb-4">PHC Health Risk</p>
-                  <h3 className="text-3xl font-black text-amber-500 leading-tight">
+                  <h3 className={`text-3xl font-black leading-tight ${
+                    (metrics.risk?.latest_score || 0) >= 75 ? 'text-rose-600' :
+                    (metrics.risk?.latest_score || 0) >= 50 ? 'text-orange-600' :
+                    (metrics.risk?.latest_score || 0) >= 25 ? 'text-amber-500' :
+                    'text-emerald-600'
+                  }`}>
                     {(metrics.risk?.latest_score || 0).toFixed(2)} / 100
                   </h3>
-                  <p className="text-[10px] text-gray-400 font-semibold mt-1">Severity: {metrics.risk?.severity || 'LOW'}</p>
-                  <p className="text-[9px] text-gray-400 font-semibold mt-1.5">Based on current surveillance data</p>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <span className="text-[10px] text-gray-500 font-semibold">Severity:</span>
+                    <span className={`text-[10px] font-black uppercase px-1.5 py-0.5 rounded ${
+                      metrics.risk?.severity === 'CRITICAL' ? 'bg-rose-100 text-rose-800' :
+                      metrics.risk?.severity === 'HIGH' ? 'bg-orange-100 text-orange-800' :
+                      metrics.risk?.severity === 'MEDIUM' ? 'bg-amber-100 text-amber-800' :
+                      'bg-emerald-100 text-emerald-800'
+                    }`}>
+                      {metrics.risk?.severity || 'LOW'}
+                    </span>
+                  </div>
+                  <p className="text-[9px] text-gray-400 font-semibold mt-1.5">
+                    Click to view factor breakdown ↓
+                  </p>
                 </div>
-                <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center text-amber-500">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                  (metrics.risk?.latest_score || 0) >= 75 ? 'bg-rose-50 text-rose-500' :
+                  (metrics.risk?.latest_score || 0) >= 50 ? 'bg-orange-50 text-orange-500' :
+                  (metrics.risk?.latest_score || 0) >= 25 ? 'bg-amber-50 text-amber-500' :
+                  'bg-emerald-50 text-emerald-500'
+                }`}>
                   <FiHeart size={18} />
                 </div>
               </div>
@@ -292,6 +326,15 @@ export default function PHCDashboard() {
                   </div>
                 </div>
               )}
+            </section>
+
+            {/* PHC COMPOSITE CLINICAL RISK ASSESSMENT SECTION */}
+            <section id="phc-risk-score-section">
+              <PHCRiskScoreCard 
+                risk={metrics?.risk} 
+                loading={loading} 
+                phcIdFormatted={phcIdFormatted} 
+              />
             </section>
 
             {/* CURRENT PHC HEALTH OVERVIEW SECTION */}
