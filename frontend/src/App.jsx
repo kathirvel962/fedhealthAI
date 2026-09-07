@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import ProtectedRoute from './components/ProtectedRoute';
+import { ChatbotContainer } from './components/chatbot';
 import LoginPage from './pages/LoginPage';
 import PHCDashboard from './pages/PHCDashboard';
 import AdminDashboard from './pages/AdminDashboard';
@@ -48,6 +49,9 @@ function App() {
         />
         <Route path="/" element={<Navigate to="/login" replace />} />
       </Routes>
+
+      {/* Role-gated FedHealth AI Assistant Chatbot */}
+      <ChatbotContainer />
     </Router>
   );
 }
