@@ -4,7 +4,6 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@emailjs/browser": "^4.4.1",
     "axios": "^1.4.0",
     "framer-motion": "^10.16.0",
     "leaflet": "^1.9.4",

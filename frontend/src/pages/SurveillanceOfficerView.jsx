@@ -24,7 +24,6 @@ import PremiumCard from '../components/PremiumCard';
 import { LoadingSkeleton } from '../components/LoadingStates';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { medicalTheme, getSeverityColor } from '../components/MedicalTheme';
-import { sendPHCAlert } from '../services/emailService';
 
 export default function SurveillanceOfficerView() {
   const user = JSON.parse(localStorage.getItem('user'));
@@ -63,7 +62,7 @@ export default function SurveillanceOfficerView() {
     return () => clearInterval(interval);
   }, []);
 
-  // Direct Alert Dispatch to a specific PHC (e.g. PHC_3)
+  // Direct Alert Dispatch to a specific PHC using Google SMTP
   const handleDirectDispatch = async (e) => {
     if (e) e.preventDefault();
     setDirectSending(true);
@@ -79,95 +78,39 @@ export default function SurveillanceOfficerView() {
         message: directForm.message.trim() || undefined
       });
 
-      if (res.data.status === 'sent') {
-        setDirectFeedback({
-          type: 'success',
-          text: res.data.message || `Surveillance email delivered successfully to ${directForm.target_phc_id}!`
-        });
-        await loadAllData();
-      } else if (res.data.status === 'pending' && res.data.email_params) {
-        // Fallback to EmailJS if backend SMTP not directly connected
-        try {
-          await sendPHCAlert(res.data.email_params);
-          await surveillanceAPI.confirmNotification({
-            log_id: res.data.log_id,
-            status: 'SENT'
-          });
-          setDirectFeedback({
-            type: 'success',
-            text: `Email alert sent successfully to ${res.data.email_params.to_email} for ${directForm.target_phc_id}!`
-          });
-          await loadAllData();
-        } catch (emailErr) {
-          await surveillanceAPI.confirmNotification({
-            log_id: res.data.log_id,
-            status: 'FAILED',
-            error_message: emailErr.message
-          });
-          throw emailErr;
-        }
-      }
+      setDirectFeedback({
+        type: 'success',
+        text: res.data.message || `Surveillance email delivered successfully to ${directForm.target_phc_id} via Google SMTP!`
+      });
+      await loadAllData();
     } catch (err) {
       console.error('Direct dispatch error:', err);
       setDirectFeedback({
         type: 'error',
-        text: err?.response?.data?.error || err.message || 'Failed to dispatch alert email.'
+        text: err?.response?.data?.error || err.message || 'Failed to dispatch alert email via Google SMTP.'
       });
     } finally {
       setDirectSending(false);
     }
   };
 
-  // Manual Notification Handler using confirm endpoint for robustness
+  // Manual Notification Handler using Google SMTP
   const handleNotifyPhc = async (alertId, recipientPhcId) => {
     const key = `${alertId}_${recipientPhcId}`;
     setNotifyLoading(prev => ({ ...prev, [key]: true }));
 
     try {
-      // 1. Request parameters from the backend (manual notification)
-      const requestRes = await surveillanceAPI.requestNotification({
+      const res = await surveillanceAPI.notifyPHC({
         alert_id: alertId,
         recipient_phc_id: recipientPhcId,
         notification_type: 'manual'
       });
 
-      if (requestRes.data.status === 'already_sent' || requestRes.data.status === 'sent') {
-        // Notification delivered directly by backend or already delivered
-        setNotifyLoading(prev => ({ ...prev, [key]: false }));
-        await loadAllData();
-        return;
-      }
-
-      const { log_id, email_params } = requestRes.data;
-
-      // 2. Fallback to EmailJS send if configured
-      if (email_params) {
-        try {
-          await sendPHCAlert(email_params);
-
-          // 3. Confirm success on backend
-          await surveillanceAPI.confirmNotification({
-            log_id,
-            status: 'SENT'
-          });
-
-        } catch (emailError) {
-          // 4. Confirm failure on backend
-          await surveillanceAPI.confirmNotification({
-            log_id,
-            status: 'FAILED',
-            error_message: emailError?.message || 'Notification failed to deliver'
-          });
-          throw emailError;
-        }
-      }
-
       // Reload everything to update notification statuses in UI
       await loadAllData();
-
     } catch (err) {
       console.error('Notification dispatch error:', err);
-      alert(err.message || 'Failed to send notification email. Please check configuration and try again.');
+      alert(err?.response?.data?.error || err.message || 'Failed to send notification email via Google SMTP.');
     } finally {
       setNotifyLoading(prev => ({ ...prev, [key]: false }));
     }

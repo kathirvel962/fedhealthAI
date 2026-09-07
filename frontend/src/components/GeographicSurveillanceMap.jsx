@@ -102,9 +102,10 @@ export default function GeographicSurveillanceMap({
     return 'bg-green-50 border-green-200 text-green-700';
   };
 
-  // Find active alert details for the selected PHC
-  const activeCriticalAlert = selectedPhc ? alertHistory.find(
-    a => a.phc_id === selectedPhc.phc_id && a.severity === 'CRITICAL'
+  // Find active alert details for the selected PHC (critical, high, medium, or active alert)
+  const activeAlert = selectedPhc ? (
+    alertHistory.find(a => a.phc_id === selectedPhc.phc_id && a.status !== 'RESOLVED') ||
+    alertHistory.find(a => a.phc_id === selectedPhc.phc_id)
   ) : null;
 
   // Render empty state if no PHC has configured coordinates
@@ -364,14 +365,14 @@ export default function GeographicSurveillanceMap({
                   {selectedPhc.nearby_phcs && selectedPhc.nearby_phcs.length > 0 ? (
                     <div className="space-y-2">
                       {selectedPhc.nearby_phcs.map((neighbor) => {
-                        // Get notification status for this neighbor if active critical alert exists
-                        const notif = activeCriticalAlert?.notifications?.find(
+                        // Get notification status for this neighbor if active alert exists
+                        const notif = activeAlert?.notifications?.find(
                           n => n.recipient_phc_id === neighbor.phc_id
                         );
                         
                         const statusText = notif ? notif.status_text : 'Not notified';
                         const status = notif ? notif.status : 'NONE';
-                        const isSending = notifyLoading[`${activeCriticalAlert?.id}_${neighbor.phc_id}`];
+                        const isSending = notifyLoading[`${activeAlert?.id || `ALERT_${selectedPhc.phc_id}`}_${neighbor.phc_id}`];
                         
                         let statusColor = 'text-gray-500 bg-gray-50';
                         if (status === 'SENT') statusColor = 'text-green-700 bg-green-50 border-green-200';
@@ -391,16 +392,16 @@ export default function GeographicSurveillanceMap({
                               </span>
                               
                               {/* Notify Button */}
-                              {activeCriticalAlert && neighbor.email && (
+                              {neighbor.email && (
                                 <button
                                   disabled={status === 'SENT' || isSending}
-                                  onClick={() => onNotifyPhc && onNotifyPhc(activeCriticalAlert.id, neighbor.phc_id)}
+                                  onClick={() => onNotifyPhc && onNotifyPhc(activeAlert?.id || `ALERT_${selectedPhc.phc_id}`, neighbor.phc_id)}
                                   className={`p-1.5 rounded-lg text-white transition ${
                                     status === 'SENT' 
                                       ? 'bg-gray-300 cursor-not-allowed' 
-                                      : 'bg-indigo-600 hover:bg-indigo-700'
+                                      : 'bg-indigo-600 hover:bg-indigo-700 cursor-pointer'
                                   }`}
-                                  title={status === 'SENT' ? 'Already notified' : 'Trigger notification email'}
+                                  title={status === 'SENT' ? 'Already notified' : `Trigger Google SMTP notification email to ${neighbor.phc_name}`}
                                 >
                                   <FiSend size={10} />
                                 </button>
@@ -445,15 +446,15 @@ export default function GeographicSurveillanceMap({
                 <div className="flex gap-2">
                   <button
                     onClick={() => {
-                      if (onNotifyPhc && activeCriticalAlert && selectedPhc.nearby_phcs?.length > 0) {
+                      if (onNotifyPhc && selectedPhc.nearby_phcs?.length > 0) {
                         const target = selectedPhc.nearby_phcs.find(n => n.email);
                         if (target) {
-                          onNotifyPhc(activeCriticalAlert.id, target.phc_id);
+                          onNotifyPhc(activeAlert?.id || `ALERT_${selectedPhc.phc_id}`, target.phc_id);
                         }
                       }
                     }}
-                    disabled={!activeCriticalAlert || !selectedPhc.nearby_phcs?.some(n => n.email)}
-                    className="flex-1 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold text-xs transition text-center uppercase tracking-wider disabled:bg-gray-250 disabled:cursor-not-allowed flex items-center justify-center gap-1"
+                    disabled={!selectedPhc.nearby_phcs?.some(n => n.email)}
+                    className="flex-1 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold text-xs transition text-center uppercase tracking-wider disabled:bg-gray-250 disabled:cursor-not-allowed flex items-center justify-center gap-1 cursor-pointer"
                   >
                     <FiSend /> Notify PHC
                   </button>

@@ -1233,7 +1233,7 @@ class SurveillanceDashboardMetricsView(APIView):
 
 
 class PHCNotificationView(APIView):
-    """Request params for EmailJS notification to a nearby PHC"""
+    """Dispatch alert notification email to a nearby PHC using Google SMTP"""
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
@@ -1243,13 +1243,8 @@ class PHCNotificationView(APIView):
             recipient_phc_id = request.data.get('recipient_phc_id')
             notification_type = request.data.get('notification_type', 'manual')
 
-            if not alert_id or not recipient_phc_id:
-                return Response({'error': 'alert_id and recipient_phc_id are required'}, status=status.HTTP_400_BAD_REQUEST)
-
-            # Find alert
-            alert = Alert.objects.filter(id=alert_id).first()
-            if not alert:
-                return Response({'error': 'Alert not found'}, status=status.HTTP_404_NOT_FOUND)
+            if not recipient_phc_id:
+                return Response({'error': 'recipient_phc_id is required'}, status=status.HTTP_400_BAD_REQUEST)
 
             # Find recipient PHC
             recipient = PHC.objects.filter(name=recipient_phc_id).first()
@@ -1259,143 +1254,92 @@ class PHCNotificationView(APIView):
             if not recipient.email:
                 return Response({'error': 'Recipient PHC does not have a configured email address'}, status=status.HTTP_400_BAD_REQUEST)
 
-            # Find source PHC
-            source_phc = PHC.objects.filter(name=alert.phc_id).first()
-            source_name = source_phc.phc_name if source_phc else alert.phc_id
+            # Find alert or fallback to source PHC metrics
+            alert = None
+            if alert_id:
+                if str(alert_id).startswith('ALERT_'):
+                    phc_code = str(alert_id).replace('ALERT_', '')
+                    alert = Alert.objects.filter(phc_id=phc_code).order_by('-created_at').first()
+                else:
+                    try:
+                        alert = Alert.objects.filter(id=alert_id).first()
+                    except Exception:
+                        pass
+                    if not alert:
+                        alert = Alert.objects.filter(phc_id=alert_id).order_by('-created_at').first()
 
-            # Idempotency check: check if already SENT to this recipient
-            existing_sent = NotificationLog.objects.filter(
-                alert_id=alert_id,
-                recipient_phc_id=recipient_phc_id,
-                status='SENT'
-            ).first()
+            if alert:
+                source_phc = PHC.objects.filter(name=alert.phc_id).first()
+                source_name = source_phc.phc_name if source_phc else alert.phc_id
+                primary_disease = get_dominant_disease(alert.phc_id)
+                severity = alert.severity
+                risk_score = f"{alert.risk_score:.1f}"
+                alert_msg = alert.message or f"Elevated disease risk detected at {source_name}"
+                alert_time_str = alert.created_at.strftime('%Y-%m-%d %H:%M:%S UTC')
+                alert_id_str = str(alert.id)
+            else:
+                source_phc_id = request.data.get('source_phc_id') or (str(alert_id).replace('ALERT_', '') if alert_id else 'PHC_4')
+                source_phc = PHC.objects.filter(name=source_phc_id).first()
+                source_name = source_phc.phc_name if source_phc else source_phc_id
+                primary_disease = get_dominant_disease(source_phc_id)
+                severity = request.data.get('severity', 'HIGH')
+                risk_score = str(request.data.get('risk_score', '75.0'))
+                alert_msg = f"Surveillance alert: Elevated risk and cases of {primary_disease} observed at {source_name}. Please coordinate triage preparedness."
+                alert_time_str = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
+                alert_id_str = f"ALERT_{source_phc_id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
 
-            if existing_sent:
-                return Response({
-                    'status': 'already_sent',
-                    'message': 'This alert has already been successfully notified to the recipient PHC.'
-                }, status=status.HTTP_200_OK)
-
-            # Retrieve or create a PENDING/FAILED log to retry
-            log = NotificationLog.objects.filter(
-                alert_id=alert_id,
-                recipient_phc_id=recipient_phc_id,
-                status='PENDING'
-            ).first()
-
-            if not log:
-                log = NotificationLog.objects.create(
-                    alert_id=alert_id,
-                    recipient_phc_id=recipient_phc_id,
-                    recipient_email=recipient.email,
-                    status='PENDING',
-                    notification_type=notification_type
-                )
-
-            # Compute parameters
-            primary_disease = get_dominant_disease(alert.phc_id)
-            alert_msg = alert.message or f"Elevated disease risk detected at {source_name}"
-            alert_time_str = alert.created_at.strftime('%Y-%m-%d %H:%M:%S UTC')
-            
-            # Send email directly from backend using Django mail configuration
+            # Send email directly using Google SMTP
             from api.email_service import send_phc_alert_email
             email_sent, email_err = send_phc_alert_email(
                 recipient_email=recipient.email,
                 recipient_phc_name=recipient.phc_name or recipient.name,
                 source_phc_name=source_name,
                 disease=primary_disease,
-                severity=alert.severity,
-                risk_score=f"{alert.risk_score:.1f}",
+                severity=severity,
+                risk_score=risk_score,
                 alert_message=alert_msg,
                 alert_time=alert_time_str
             )
 
+            # Record in notification log
+            log = NotificationLog.objects.create(
+                alert_id=alert_id_str,
+                recipient_phc_id=recipient_phc_id,
+                recipient_email=recipient.email,
+                status='SENT' if email_sent else 'FAILED',
+                notification_type=notification_type,
+                error_message=email_err if not email_sent else None,
+                sent_at=datetime.utcnow()
+            )
+
             if email_sent:
-                log.status = 'SENT'
-                log.sent_at = datetime.utcnow()
-                log.error_message = None
-                log.save()
                 return Response({
                     'status': 'sent',
                     'log_id': str(log.id),
-                    'message': f"Surveillance alert email successfully delivered to {recipient.email}"
+                    'recipient_email': recipient.email,
+                    'message': f"Surveillance alert email successfully delivered to {recipient.phc_name or recipient.name} ({recipient.email}) via Google SMTP"
                 }, status=status.HTTP_200_OK)
             else:
-                log.status = 'FAILED'
-                log.error_message = email_err
-                log.save()
-                
-                email_params = {
-                    'to_email': recipient.email,
-                    'phc_id': recipient.name,
-                    'phc_name': recipient.phc_name or recipient.name,
-                    'source_phc_id': alert.phc_id,
-                    'source_phc_name': source_name,
-                    'severity': alert.severity,
-                    'risk_score': f"{alert.risk_score:.1f}",
-                    'disease': primary_disease,
-                    'alert_message': alert_msg,
-                    'alert_time': alert_time_str
-                }
                 return Response({
-                    'status': 'pending',
+                    'status': 'failed',
                     'log_id': str(log.id),
-                    'error': email_err,
-                    'email_params': email_params
-                }, status=status.HTTP_200_OK)
+                    'error': f"Failed to deliver email via Google SMTP: {email_err}"
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         except Exception as e:
-            logger.error(f"Error initiating PHC notification: {str(e)}", exc_info=True)
-            return Response({'error': 'Internal server error'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-class PHCNotificationConfirmView(APIView):
-    """Confirm/update the status of an EmailJS notification log"""
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request):
-        try:
-            log_id = request.data.get('log_id')
-            outcome = request.data.get('status')  # 'SENT' or 'FAILED'
-            error_message = request.data.get('error_message')
-
-            if not log_id or not outcome:
-                return Response({'error': 'log_id and status are required'}, status=status.HTTP_400_BAD_REQUEST)
-
-            if outcome not in ['SENT', 'FAILED']:
-                return Response({'error': 'Status must be SENT or FAILED'}, status=status.HTTP_400_BAD_REQUEST)
-
-            log = NotificationLog.objects.filter(id=log_id).first()
-            if not log:
-                return Response({'error': 'Notification log not found'}, status=status.HTTP_404_NOT_FOUND)
-
-            log.status = outcome
-            if outcome == 'FAILED':
-                log.error_message = error_message
-            log.sent_at = datetime.utcnow()
-            log.save()
-
-            return Response({
-                'status': 'updated',
-                'log_id': str(log.id),
-                'log_status': log.status
-            }, status=status.HTTP_200_OK)
-
-        except Exception as e:
-            logger.error(f"Error confirming PHC notification: {str(e)}", exc_info=True)
-            return Response({'error': 'Internal server error'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.error(f"Error sending PHC notification via Google SMTP: {str(e)}", exc_info=True)
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class DirectPHCAlertView(APIView):
-    """Directly dispatch an alert notification email to a target PHC (e.g. PHC_3)"""
+    """Directly dispatch an alert notification email to a target PHC via Google SMTP"""
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
         try:
-            target_phc_id = request.data.get('target_phc_id', 'PHC_3').strip().upper()
-            source_phc_id = request.data.get('source_phc_id', 'PHC_1').strip().upper()
+            target_phc_id = request.data.get('target_phc_id', 'PHC_5').strip().upper()
+            source_phc_id = request.data.get('source_phc_id', 'PHC_4').strip().upper()
             disease = request.data.get('disease', 'Dengue')
             severity = request.data.get('severity', 'HIGH')
             risk_score = request.data.get('risk_score', '85.0')
@@ -1436,7 +1380,7 @@ class DirectPHCAlertView(APIView):
                 recipient_email=target_phc.email,
                 status='SENT' if email_sent else 'FAILED',
                 notification_type='manual',
-                error_message=email_err,
+                error_message=email_err if not email_sent else None,
                 sent_at=datetime.utcnow()
             )
 
@@ -1445,31 +1389,18 @@ class DirectPHCAlertView(APIView):
                     'status': 'sent',
                     'log_id': str(log.id),
                     'recipient_email': target_phc.email,
-                    'message': f"Alert email successfully dispatched to {target_name} ({target_phc.email})"
+                    'message': f"Alert email successfully dispatched to {target_name} ({target_phc.email}) via Google SMTP"
                 }, status=status.HTTP_200_OK)
             else:
-                email_params = {
-                    'to_email': target_phc.email,
-                    'phc_id': target_phc_id,
-                    'phc_name': target_name,
-                    'source_phc_id': source_phc_id,
-                    'source_phc_name': source_name,
-                    'severity': severity,
-                    'risk_score': str(risk_score),
-                    'disease': disease,
-                    'alert_message': alert_msg,
-                    'alert_time': alert_time_str
-                }
                 return Response({
-                    'status': 'pending',
+                    'status': 'failed',
                     'log_id': str(log.id),
-                    'error': email_err,
-                    'email_params': email_params
-                }, status=status.HTTP_200_OK)
+                    'error': f"Failed to deliver email via Google SMTP: {email_err}"
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         except Exception as e:
-            logger.error(f"Error dispatching direct PHC alert: {str(e)}", exc_info=True)
-            return Response({'error': 'Internal server error'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.error(f"Error in direct alert dispatch via Google SMTP: {str(e)}", exc_info=True)
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # ============================================

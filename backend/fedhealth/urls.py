@@ -42,7 +42,6 @@ urlpatterns = [
     path('api/surveillance/advisories/', views.DistrictAdminAdvisoryView.as_view(), name='district-admin-advisory'),
     path('api/surveillance/detect/', views.TriggerSurveillanceDetectionView.as_view(), name='trigger-surveillance-detection'),
     path('api/surveillance/notify/', views.PHCNotificationView.as_view(), name='phc-notification-request'),
-    path('api/surveillance/notify/confirm/', views.PHCNotificationConfirmView.as_view(), name='phc-notification-confirm'),
     path('api/surveillance/direct-send/', views.DirectPHCAlertView.as_view(), name='direct-phc-alert'),
     
     # Dashboards

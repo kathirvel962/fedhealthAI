@@ -38,8 +38,8 @@ export const surveillanceAPI = {
   getDistrictAlerts: () => api.get('/surveillance/district-alerts/'),
   sendAdvisory: (data) => api.post('/surveillance/advisories/', data),
   triggerDetection: () => api.post('/surveillance/detect/'),
+  notifyPHC: (data) => api.post('/surveillance/notify/', data),
   requestNotification: (data) => api.post('/surveillance/notify/', data),
-  confirmNotification: (data) => api.post('/surveillance/notify/confirm/', data),
   directSendAlert: (data) => api.post('/surveillance/direct-send/', data),
 };
 
