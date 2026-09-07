@@ -52,6 +52,7 @@ export default function SurveillanceOfficerView() {
   });
   const [directSending, setDirectSending] = useState(false);
   const [directFeedback, setDirectFeedback] = useState(null);
+  const [actionFeedback, setActionFeedback] = useState(null);
 
   // Auto-refresh interval (15 seconds)
   useEffect(() => {
@@ -98,6 +99,7 @@ export default function SurveillanceOfficerView() {
   const handleNotifyPhc = async (alertId, recipientPhcId) => {
     const key = `${alertId}_${recipientPhcId}`;
     setNotifyLoading(prev => ({ ...prev, [key]: true }));
+    setActionFeedback(null);
 
     try {
       const res = await surveillanceAPI.notifyPHC({
@@ -106,11 +108,20 @@ export default function SurveillanceOfficerView() {
         notification_type: 'manual'
       });
 
+      setActionFeedback({
+        type: 'success',
+        text: res.data.message || `Alert notification email dispatched to ${recipientPhcId} via Google SMTP.`
+      });
+
       // Reload everything to update notification statuses in UI
       await loadAllData();
     } catch (err) {
       console.error('Notification dispatch error:', err);
-      alert(err?.response?.data?.error || err.message || 'Failed to send notification email via Google SMTP.');
+      const errMsg = err?.response?.data?.error || err.message || 'Failed to send notification email via Google SMTP.';
+      setActionFeedback({
+        type: 'error',
+        text: errMsg
+      });
     } finally {
       setNotifyLoading(prev => ({ ...prev, [key]: false }));
     }
