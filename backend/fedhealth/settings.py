@@ -101,14 +101,32 @@ REST_FRAMEWORK = {
     ],
 }
 
+import sys
+import re
+import urllib.parse
+import mongoengine
+
+def sanitize_mongo_uri(uri):
+    """Ensure username and password special characters (e.g. '@') are percent-encoded per RFC 3986."""
+    if not uri:
+        return uri
+    pattern = r'^(mongodb(?:\+srv)?:\/\/)([^:]+):(.+)@([^@\/]+)(\/.*)?$'
+    match = re.match(pattern, uri)
+    if match:
+        scheme, user, password, host, rest = match.groups()
+        unquoted_pw = urllib.parse.unquote_plus(password)
+        encoded_pw = urllib.parse.quote_plus(unquoted_pw)
+        unquoted_user = urllib.parse.unquote_plus(user)
+        encoded_user = urllib.parse.quote_plus(unquoted_user)
+        rest = rest or ''
+        return f'{scheme}{encoded_user}:{encoded_pw}@{host}{rest}'
+    return uri
+
 # MongoDB Atlas Connection
-MONGO_DB_URL = config(
+MONGO_DB_URL = sanitize_mongo_uri(config(
     'MONGO_DB_URL',
     default='mongodb://localhost:27017/'
-)
-
-import sys
-import mongoengine
+))
 
 if 'test' in sys.argv:
     MONGOENGINE_DATABASE = 'test_fedhealth'
