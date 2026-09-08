@@ -1408,58 +1408,66 @@ class DirectPHCAlertView(APIView):
 # ============================================
 
 class HealthCheckView(APIView):
-    """System health check endpoint - verifies MongoDB and ML collections."""
+    """System health check endpoint - verifies backend availability, MongoDB, and ML collections."""
     permission_classes = [AllowAny]
 
     def get(self, request):
+        db_status = "connected"
+        ml_status = "operational"
+        details = {}
+
         try:
-            # Verify MongoDB connection
-            db_status = "connected"
-            ml_status = "operational"
-            
+            # Check MongoDB connection
             try:
-                # Ping database
                 User.objects.first()
             except Exception as e:
                 db_status = "disconnected"
+                ml_status = "degraded"
+                details['database_error'] = str(e)
                 logger.warning(f"Database connection check failed: {str(e)}")
-            
-            # Verify local_models collection
-            try:
-                LocalModel.objects.count()
-            except Exception as e:
-                ml_status = "degraded"
-                logger.warning(f"Local models collection check failed: {str(e)}")
-            
-            # Verify global_models collection
-            try:
-                GlobalModel.objects.count()
-            except Exception as e:
-                ml_status = "degraded"
-                logger.warning(f"Global models collection check failed: {str(e)}")
-            
-            # Determine overall status
+
+            # Only verify collections if connection succeeded
+            if db_status == "connected":
+                try:
+                    LocalModel.objects.count()
+                except Exception as e:
+                    ml_status = "degraded"
+                    details['local_models_error'] = str(e)
+                    logger.warning(f"Local models check failed: {str(e)}")
+
+                try:
+                    GlobalModel.objects.count()
+                except Exception as e:
+                    ml_status = "degraded"
+                    details['global_models_error'] = str(e)
+                    logger.warning(f"Global models check failed: {str(e)}")
+
             is_healthy = db_status == "connected" and ml_status == "operational"
             overall_status = "healthy" if is_healthy else "degraded"
-            http_status = status.HTTP_200_OK if is_healthy else status.HTTP_503_SERVICE_UNAVAILABLE
-            
-            logger.info(f"Health check: {overall_status} (db={db_status}, ml={ml_status})")
 
-            return Response({
+            response_data = {
                 'status': overall_status,
                 'database': db_status,
                 'ml_engine': ml_status,
                 'timestamp': datetime.utcnow().isoformat(),
                 'version': '1.0.0'
-            }, status=http_status)
+            }
+            if details:
+                response_data['details'] = details
+
+            logger.info(f"Health check: {overall_status} (db={db_status}, ml={ml_status})")
+            return Response(response_data, status=status.HTTP_200_OK)
 
         except Exception as e:
-            logger.error(f"Health check failed: {str(e)}")
+            logger.exception(f"Health check encountered unexpected error: {str(e)}")
             return Response({
-                'status': 'unhealthy',
-                'error': 'System health check failed due to an internal error.',
-                'timestamp': datetime.utcnow().isoformat()
-            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+                'status': 'degraded',
+                'database': 'error',
+                'ml_engine': 'unknown',
+                'error': str(e),
+                'timestamp': datetime.utcnow().isoformat(),
+                'version': '1.0.0'
+            }, status=status.HTTP_200_OK)
 
 
 class CohortHistoryView(APIView):
