@@ -17,8 +17,11 @@ from api import views
 urlpatterns = [
     # API Documentation (Swagger disabled - using drf_yasg requires pkg_resources)
     
-    # Health Check
+    # Root and Health Check Endpoints
+    path('', views.HealthCheckView.as_view(), name='root-health'),
+    path('api/', views.HealthCheckView.as_view(), name='api-root-health'),
     path('health/', views.HealthCheckView.as_view(), name='health-check'),
+    path('health', views.HealthCheckView.as_view(), name='health-check-noslash'),
     
     # Authentication
     path('api/auth/register/', views.RegisterView.as_view(), name='register'),
